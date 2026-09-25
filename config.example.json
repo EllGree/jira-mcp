@@ -1,0 +1,7 @@
+{
+  "site": "https://<your-site>.atlassian.net",
+  "email": "<the Atlassian account email the token belongs to>",
+  "token": "<Jira API token>",
+  "cloudId": "",
+  "readOnly": false
+}

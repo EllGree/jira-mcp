@@ -1,0 +1,12 @@
+{
+  "name": "jira-mcp",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": { "jira-mcp": "./index.js" },
+  "scripts": {
+    "test": "node --test lib/*.test.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

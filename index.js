@@ -437,7 +437,7 @@ async function downloadAttachment({ attachment_id, issue_key, filename, dir, inl
 
 // ---- tools ----
 
-const key = { type: "string", description: "Issue key, e.g. OXXII-2845" };
+const key = { type: "string", description: "Issue key, e.g. PROJ-123" };
 const textBody =
   "Text with light markdown. @[accountId], @[accountId|Display Name] or [~accountid:ID] becomes a real mention that notifies (the name is looked up when not given); [label](url), bare URLs, `code` and **bold** are kept; a blank line starts a paragraph; a block of '- ' lines is a bullet list. Text without these markers stays plain text.";
 const dryRun = { type: "boolean", description: "Build and return the request (the generated ADF) without sending it" };

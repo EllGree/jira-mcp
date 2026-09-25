@@ -64,10 +64,14 @@ function compactChangelog(changelog, last) {
   const lines = [];
   for (const h of changelog?.histories || []) {
     for (const i of h.items || []) {
-      lines.push({
-        at: h.created,
-        line: `${shortDate(h.created)} · ${h.author?.displayName ?? "?"} · ${i.field}: ${brief(i.fromString ?? i.from)} → ${brief(i.toString ?? i.to)}`,
-      });
+      const from = i.fromString ?? i.from;
+      const to = i.toString ?? i.to;
+      // Two cut-off copies of a long text look identical and say nothing; the size change says more.
+      const change =
+        String(from ?? "").length > 120 || String(to ?? "").length > 120
+          ? `edited (${String(from ?? "").length} → ${String(to ?? "").length} chars)`
+          : `${brief(from)} → ${brief(to)}`;
+      lines.push({ at: h.created, line: `${shortDate(h.created)} · ${h.author?.displayName ?? "?"} · ${i.field}: ${change}` });
     }
   }
   lines.sort((a, b) => (a.at < b.at ? -1 : 1));

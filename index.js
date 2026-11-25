@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, extname, join } from "node:path";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 
-import { get, getBinary, post, put } from "./lib/jira.js";
+import { get, getBinary, post, postMultipart, put } from "./lib/jira.js";
 import { mentionIds, textToAdf } from "./lib/adf.js";
 import { htmlToText } from "./lib/html.js";
 import { jiraStarted } from "./lib/time.js";
@@ -194,6 +194,32 @@ async function editIssue({ issue_key, fields = {}, update, description_text, not
     now[k] = back.renderedFields?.[k] ?? back.fields?.[k];
   }
   return { updated: issue_key, now };
+}
+
+// ---- create ----
+
+async function createIssue({
+  project,
+  issuetype,
+  summary,
+  description_text,
+  assignee_account_id,
+  priority,
+  parent,
+  labels,
+  fields = {},
+  dry_run = false,
+}) {
+  if (!project || !issuetype || !summary) throw new Error("project, issuetype and summary are required");
+  const f = { ...fields, project: { key: project }, issuetype: { name: issuetype }, summary };
+  if (description_text !== undefined) f.description = await adfFrom({ text: description_text });
+  if (assignee_account_id) f.assignee = { accountId: assignee_account_id };
+  if (priority) f.priority = { name: priority };
+  if (parent) f.parent = { key: parent };
+  if (labels?.length) f.labels = labels;
+  if (dry_run) return { dry_run: true, payload: { fields: f } };
+  const res = await post("/rest/api/3/issue", { fields: f });
+  return { created: res.key, id: res.id, url: browseUrl(res.key) };
 }
 
 // ---- transitions ----
@@ -435,11 +461,33 @@ async function downloadAttachment({ attachment_id, issue_key, filename, dir, inl
   return { content };
 }
 
+const MIME = {
+  ".md": "text/markdown", ".txt": "text/plain", ".json": "application/json", ".csv": "text/csv",
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp",
+  ".pdf": "application/pdf", ".zip": "application/zip", ".log": "text/plain", ".html": "text/html",
+};
+
+async function attachFiles({ issue_key, paths, dry_run = false }) {
+  if (!issue_key) throw new Error("issue_key is required");
+  const list = Array.isArray(paths) ? paths : paths ? [paths] : [];
+  if (!list.length) throw new Error("paths: give at least one local file path");
+  const files = list.map((p) => {
+    const st = statSync(p);
+    if (!st.isFile()) throw new Error(`not a file: ${p}`);
+    return { path: p, filename: basename(p), size: st.size, mime_type: MIME[extname(p).toLowerCase()] || "application/octet-stream" };
+  });
+  if (dry_run) return { dry_run: true, issue_key, files };
+  const form = new FormData();
+  for (const f of files) form.append("file", new Blob([readFileSync(f.path)], { type: f.mime_type }), f.filename);
+  const res = await postMultipart(`/rest/api/3/issue/${enc(issue_key)}/attachments`, form);
+  return { issue_key, attached: (res || []).map((a) => ({ id: a.id, filename: a.filename, size: a.size })) };
+}
+
 // ---- tools ----
 
 const key = { type: "string", description: "Issue key, e.g. PROJ-123" };
 const textBody =
-  "Text with light markdown. @[accountId], @[accountId|Display Name] or [~accountid:ID] becomes a real mention that notifies (the name is looked up when not given); [label](url), bare URLs, `code` and **bold** are kept; a blank line starts a paragraph; a block of '- ' lines is a bullet list. Text without these markers stays plain text.";
+  "Text with light markdown. @[accountId], @[accountId|Display Name] or [~accountid:ID] becomes a real mention that notifies (the name is looked up when not given); [label](url), bare URLs, `code` and **bold** are kept; a blank line starts a paragraph; a block of '- ' lines is a bullet list; a line starting with '#'..'######' is a heading. Text without these markers stays plain text.";
 const dryRun = { type: "boolean", description: "Build and return the request (the generated ADF) without sending it" };
 
 // Each tool carries its own handler, so a tool cannot be listed without being dispatched or the reverse.
@@ -502,6 +550,44 @@ const TOOLS = [
       required: ["issue_key"],
     },
     handler: addComment,
+  },
+  {
+    name: "jira_create_issue",
+    write: true,
+    description:
+      "Create an issue. Returns its key and URL. Some fields (e.g. reporter) may be refused by the project's create screen; pass extra fields via `fields`.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Project key, e.g. PROJ" },
+        issuetype: { type: "string", description: 'Issue type name, e.g. "Task", "Bug", "Story"' },
+        summary: { type: "string" },
+        description_text: { type: "string", description: "Description as text. " + textBody },
+        assignee_account_id: { type: "string" },
+        priority: { type: "string", description: 'Priority name, e.g. "Minor"' },
+        parent: { type: "string", description: "Parent issue key (epic or parent task)" },
+        labels: { type: "array", items: { type: "string" } },
+        fields: { type: "object", description: "Any other Jira fields, merged as given (e.g. a sprint custom field)" },
+        dry_run: dryRun,
+      },
+      required: ["project", "issuetype", "summary"],
+    },
+    handler: createIssue,
+  },
+  {
+    name: "jira_attach_files",
+    write: true,
+    description: "Attach local files to an issue. Returns the new attachment ids.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        issue_key: key,
+        paths: { type: "array", items: { type: "string" }, description: "Absolute local file paths" },
+        dry_run: { type: "boolean", description: "Check the files and return what would be sent, without uploading" },
+      },
+      required: ["issue_key", "paths"],
+    },
+    handler: attachFiles,
   },
   {
     name: "jira_edit_issue",

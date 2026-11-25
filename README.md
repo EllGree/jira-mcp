@@ -24,6 +24,7 @@ Atlassian's hosted MCP server works for most calls, but these gaps showed up in 
 | `jira_get_issue` | Compact issue: rendered description, last N comments, changelog lines, attachments, links, subtasks |
 | `jira_search` | JQL search, paged with `next_page_token` |
 | `jira_add_comment` | Comment from text (mentions, links, code, bullets) or raw ADF; `dry_run` |
+| `jira_create_issue` | Create an issue (project, type, summary, description as text, assignee, priority, parent, labels, extra fields); returns key and URL; `dry_run` |
 | `jira_edit_issue` | Edit fields; returns the fields as they read afterwards; `dry_run` |
 | `jira_get_transitions` | Transitions from the current status |
 | `jira_transition_to_status` | Walk to a target status through intermediate steps; `dry_run` shows the path |
@@ -32,6 +33,7 @@ Atlassian's hosted MCP server works for most calls, but these gaps showed up in 
 | `jira_link_types`, `jira_link_issues` | Issue links; the new link is read back as the issue shows it |
 | `jira_lookup_user` | Users by name or email fragment, or by account id |
 | `jira_download_attachment` | Save attachments to local files and return the paths; images optionally inline too |
+| `jira_attach_files` | Upload local files as attachments; `dry_run` |
 
 In `jira_get_issue` output an inline image appears as `[image: attachment <id>]`, the id to pass to `jira_download_attachment`.
 
@@ -76,4 +78,4 @@ The path comes from the issue's workflow (`POST /rest/api/3/workflows` for its p
 
 ## Backlog
 
-Not in v1: creating issues, uploading attachments, editing or deleting comments and worklogs, listing worklogs, remote links, boards and sprints, and headings or tables in the text body form (pass raw ADF for those).
+Not yet: editing or deleting comments and worklogs, listing worklogs, remote links, boards and sprints, and tables in the text body form (pass raw ADF for those). The text body form supports `#`..`######` headings.
